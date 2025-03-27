@@ -163,10 +163,13 @@ def signup():
 
     return render_template('home.html')
 @app.route('/start_meeting/<string:meeting_id>', methods=['GET', 'POST'])
-@role_required(['admin','trainer'])
+@role_required(['admin', 'trainer'])
 def start_meeting(meeting_id):
+    meeting_id = meeting_id.strip()  # Clean up any extra spaces
+    print(f"DEBUG: Received meeting_id = '{meeting_id}'")
+
     conn, cursor = get_db_cursor()
-    cursor.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,))
+    cursor.execute("SELECT * FROM meetings WHERE id = ?", (str(meeting_id),))
     meeting = cursor.fetchone()
     conn.close()
     
@@ -174,9 +177,7 @@ def start_meeting(meeting_id):
         flash('Meeting not found', 'danger')
         return redirect(url_for('admin_dashboard'))
 
-    # Example logic to start the meeting
-    flash(f"Meeting {meeting['title']} has started!", 'success')
-    
+    flash(f"Meeting '{meeting['title']}' has started!", 'success')
     return redirect(url_for('admin_dashboard'))
 
 
