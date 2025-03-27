@@ -6,6 +6,7 @@ import secrets
 import sqlite3
 import os
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 
@@ -14,10 +15,8 @@ app.secret_key = secrets.token_hex(16)
 
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-ADMIN_SECRET_KEY = os.getenv('ADMIN_SECRET_KEY')
-TRAINER_SECRET_KEY = os.getenv('TRAINER_SECRET_KEY')
-
 DATABASE = 'videomeet.db'
+ACTIVE_USERS = {}
 
 # -------------------- DATABASE SETUP --------------------
 
@@ -26,7 +25,6 @@ def get_db_cursor():
     conn.row_factory = sqlite3.Row
     return conn, conn.cursor()
 
-# Initialize database (if needed)
 def initialize_db():
     try:
         conn, cursor = get_db_cursor()
@@ -42,7 +40,7 @@ def initialize_db():
             )
         ''')
 
-        # Create 'meetings' table if it doesn't exist
+        # Create 'meetings' table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS meetings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,9 +88,8 @@ def home():
 def user_dashboard():
     if 'user' in session:
         return render_template('user_dashboard.html', user=session['user_name'])
-    else:
-        flash('Please log in first.', 'danger')
-        return redirect(url_for('login'))
+    flash('Please log in first.', 'danger')
+    return redirect(url_for('login'))
 
 # -------------------- CREATE MEETING --------------------
 
@@ -105,17 +102,16 @@ def create_meeting():
         meeting_time = request.form['meeting_time']
         meeting_duration = request.form['meeting_duration']
         meeting_description = request.form['meeting_description']
-        meeting_id = secrets.token_hex(8)
+        meeting_id = secrets.token_hex(8)  # Generates 16 characters
         email = session.get('user')
 
-        # Check if the meeting date and time are valid
-        meeting_datetime = datetime.strptime(f"{meeting_date} {meeting_time}", '%Y-%m-%d %H:%M')
-        if meeting_datetime < datetime.now():
-            flash('Meeting date and time cannot be in the past.', 'danger')
-            return redirect(url_for('trainer_dashboard'))
-
-        conn, cursor = get_db_cursor()
         try:
+            meeting_datetime = datetime.strptime(f"{meeting_date} {meeting_time}", '%Y-%m-%d %H:%M')
+            if meeting_datetime < datetime.now():
+                flash('Meeting date and time cannot be in the past.', 'danger')
+                return redirect(url_for('trainer_dashboard'))
+
+            conn, cursor = get_db_cursor()
             sql = """INSERT INTO meetings 
                      (meeting_id, meeting_name, meeting_date, meeting_time, meeting_duration, meeting_description, email)
                      VALUES (?, ?, ?, ?, ?, ?, ?)"""
@@ -124,25 +120,21 @@ def create_meeting():
             flash('Meeting created successfully!', 'success')
         except sqlite3.Error as e:
             flash(f"Database error: {e}", 'danger')
-            conn.rollback()
         finally:
             conn.close()
 
         return redirect(url_for('trainer_dashboard'))
 
     return render_template('create_meeting.html')
+
+# -------------------- JOIN MEETING --------------------
+
 @app.route('/join_meeting', methods=['POST'])
 def join_meeting():
     meeting_input = request.form['meeting_id'].strip()
+    meeting_id = meeting_input.split('meeting_room/')[-1].split('?')[0]
 
-    # Handle both direct ID and full URL formats
-    if 'meeting_room/' in meeting_input:
-        meeting_id = meeting_input.split('meeting_room/')[-1].split('?')[0]  # Remove query params if any
-    else:
-        meeting_id = meeting_input
-
-    # Validate extracted ID format
-    if not meeting_id or len(meeting_id) != 16:  # Adjust length based on token generation format
+    if len(meeting_id) != 16:
         flash("Invalid meeting ID or link.", "danger")
         return redirect(url_for('home'))
 
@@ -150,103 +142,15 @@ def join_meeting():
     try:
         cursor.execute("SELECT * FROM meetings WHERE meeting_id = ?", (meeting_id,))
         meeting = cursor.fetchone()
-
         if meeting:
             flash(f"Joined meeting '{meeting['meeting_name']}' successfully!", "success")
             return redirect(url_for('meeting_room', meeting_id=meeting_id))
-        else:
-            flash("Meeting not found or invalid ID.", "danger")
-            return redirect(url_for('home'))
+        flash("Meeting not found.", "danger")
     finally:
         conn.close()
 
-# -------------------- ADMIN DASHBOARD --------------------
+    return redirect(url_for('home'))
 
-@app.route('/admin_dashboard')
-@role_required(['admin'])
-def admin_dashboard():
-    conn, cursor = get_db_cursor()
-    try:
-        cursor.execute("SELECT * FROM meetings")
-        meetings = cursor.fetchall()
-    finally:
-        conn.close()
-
-    return render_template('admin_dashboard.html', meetings=meetings)
-
-# -------------------- TRAINER DASHBOARD --------------------
-
-@app.route('/trainer_dashboard')
-@role_required(['admin', 'trainer'])
-def trainer_dashboard():
-    email = session.get('user')
-
-    conn, cursor = get_db_cursor()
-    try:
-        cursor.execute("SELECT * FROM meetings WHERE email = ?", (email,))
-        meetings = cursor.fetchall()
-    finally:
-        conn.close()
-
-    return render_template('trainer_dashboard.html', meetings=meetings)
-
-# -------------------- START MEETING --------------------
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        name = request.form['name']
-        email = request.form['email']
-        password = request.form['password']
-        role = request.form.get('role', 'user')
-
-        conn, cursor = get_db_cursor()
-        try:
-            cursor.execute(
-                'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-                (name, email, password, role)
-            )
-            conn.commit()
-            flash('Account created successfully. Please log in.', 'success')
-            return redirect(url_for('login'))
-        except sqlite3.IntegrityError:
-            flash('Email already exists. Please use a different one.', 'danger')
-        finally:
-            conn.close()
-
-    return render_template('signup.html')
-
-@app.route('/start_meeting/<meeting_id>', methods=['GET'])
-def start_meeting(meeting_id):   # Now accepts meeting_id as a string
-    conn, cursor = get_db_cursor()
-    try:
-        cursor.execute("SELECT * FROM meetings WHERE meeting_id = ?", (meeting_id,))
-        meeting = cursor.fetchone()
-
-        if meeting:
-            flash(f"Meeting '{meeting['meeting_name']}' started!", "success")
-            return redirect(url_for('meeting_room', meeting_id=meeting_id))
-        else:
-            flash("Meeting not found.", "danger")
-            return redirect(url_for('trainer_dashboard'))
-    except sqlite3.Error as e:
-        flash(f"Database error: {e}", "danger")
-        return redirect(url_for('trainer_dashboard'))
-    finally:
-        conn.close()
-@app.route('/meeting_room/<meeting_id>', methods=['GET'])
-def meeting_room(meeting_id):
-    conn, cursor = get_db_cursor()
-    try:
-        cursor.execute("SELECT * FROM meetings WHERE meeting_id = ?", (meeting_id,))
-        meeting = cursor.fetchone()
-
-        if meeting:
-            return render_template('meeting_room.html', meeting=meeting)
-        else:
-            flash("Meeting not found.", "danger")
-            return redirect(url_for('trainer_dashboard'))
-    finally:
-        conn.close()
 # -------------------- LOGIN --------------------
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -257,19 +161,20 @@ def login():
 
         conn, cursor = get_db_cursor()
         try:
-            cursor.execute("SELECT * FROM users WHERE email = ? AND password = ?", (email, password))
+            cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
             user = cursor.fetchone()
-            if user:
+            if user and check_password_hash(user['password'], password):
                 session['user'] = user['email']
                 session['user_name'] = user['name']
                 session['role'] = user['role']
+
+                ACTIVE_USERS[email] = user['name']
 
                 if user['role'] == 'admin':
                     return redirect(url_for('admin_dashboard'))
                 elif user['role'] == 'trainer':
                     return redirect(url_for('trainer_dashboard'))
-                else:
-                    return redirect(url_for('user_dashboard'))
+                return redirect(url_for('user_dashboard'))
             else:
                 flash('Invalid email or password.', 'danger')
         finally:
@@ -277,19 +182,24 @@ def login():
 
     return render_template('home.html')
 
-# -------------------- LOGOUT --------------------
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    flash('You have been logged out.', 'success')
-    return redirect(url_for('home'))
-
-# -------------------- SOCKET.IO --------------------
+# -------------------- CHAT SYSTEM --------------------
 
 @socketio.on('chat_message')
 def handle_chat(data):
-    emit('chat_message', data, broadcast=True)
+    if session.get('user'):
+        emit('chat_message', data, broadcast=True)
+
+@socketio.on('user_connected')
+def handle_user_connected(data):
+    ACTIVE_USERS[data['email']] = data['name']
+    emit('update_users', list(ACTIVE_USERS.values()), broadcast=True)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    user = session.get('user')
+    if user in ACTIVE_USERS:
+        del ACTIVE_USERS[user]
+        emit('update_users', list(ACTIVE_USERS.values()), broadcast=True)
 
 # -------------------- RUN APP --------------------
 
