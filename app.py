@@ -162,6 +162,21 @@ def signup():
             conn.close()
 
     return render_template('signup.html')
+@app.route('/start_meeting/<int:meeting_id>', methods=['GET', 'POST'])
+def start_meeting(meeting_id):
+    conn, cursor = get_db_cursor()
+    cursor.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,))
+    meeting = cursor.fetchone()
+    conn.close()
+    
+    if not meeting:
+        flash('Meeting not found', 'danger')
+        return redirect(url_for('admin_dashboard'))
+
+    # Example logic to start the meeting
+    flash(f"Meeting {meeting['title']} has started!", 'success')
+    
+    return redirect(url_for('admin_dashboard'))
 
 
 # -------------------- ADMIN DASHBOARD --------------------
