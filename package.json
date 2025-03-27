@@ -1,0 +1,11 @@
+{
+   "dependencies": {
+  "agora-rtc-sdk-ng": "4.22.0",
+  "agora-rtm-sdk": "2.2.1"
+},
+"resolutions": {
+  "agora-rtc-sdk-ng": "4.23.0"
+}
+
+  }
+  

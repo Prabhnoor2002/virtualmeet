@@ -1,0 +1,14 @@
+# git ignore files for python flask applaction
+
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+*.pyzw
+*.pyc
+*.env
+
+
+meetEnv/

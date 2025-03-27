@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Room</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free/js/all.min.js"></script>
+    <style>
+        body {
+            background-color: #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Poppins', sans-serif;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 90%;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            width: 100%;
+            margin-top: 20px;
+        }
+        video {
+            width: 100%;
+            border-radius: 10px;
+            object-fit: cover;
+            border: 2px solid #2563eb;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .control-btn {
+            background-color: #1d4ed8;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .control-btn:hover {
+            background-color: #2563eb;
+        }
+       
+    .control-btn:disabled {
+        background-color: #9ca3af; 
+        color: #ffffff; 
+        cursor: not-allowed;
+    }
+    #chatMessages {
+    padding-bottom: 10px;
+  }
+  #chatMessages div {
+    animation: fadeIn 0.3s ease forwards;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 class="text-2xl font-semibold mb-4">Meeting Room</h2>
+        <div class="video-grid" id="videoGrid">
+            <video id="localVideo" autoplay playsinline></video>
+        </div>
+        <div class="controls">
+    <button id="startCall" class="control-btn"><i class="fas fa-phone"></i></button>
+    <button id="endCall" class="control-btn" style="background-color: #dc2626; color: #ffffff;" disabled>
+        <i class="fas fa-phone-slash"></i>
+    </button>
+    <button id="toggleCamera" class="control-btn" disabled><i class="fas fa-video"></i></button>
+    <button id="toggleMic" class="control-btn" disabled><i class="fas fa-microphone"></i></button>
+    <button id="shareScreen" class="control-btn bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded" disabled>
+        <i class="fas fa-desktop"></i> 
+    </button>
+</div>
+    </div>
+    <div id="chatToggle" class="fixed right-8 bottom-8 bg-blue-600 text-white p-4 rounded-full shadow-lg cursor-pointer transition-all hover:bg-blue-700">
+        <i class="fas fa-comments text-xl"></i>
+      </div>
+      
+      <div id="chatBox" class="fixed right-8 bottom-8 w-80 bg-white border border-gray-300 rounded-xl shadow-lg overflow-hidden hidden transition-all">
+        <div class="flex justify-between items-center bg-blue-600 text-white p-3">
+          <span>Meeting Chat</span>
+          <button id="closeChat" class="text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="chatMessages" class="h-64 overflow-y-auto p-3 bg-gray-50"></div>
+        <div class="flex p-3 bg-gray-100">
+          <input id="chatInput" type="text" placeholder="Type a message..."
+            class="flex-1 p-2 rounded-md border border-gray-300 focus:outline-none focus:ring focus:ring-blue-300">
+          <button id="sendBtn" class="ml-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Send</button>
+        </div>
+      </div>
+       
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.11.0"></script>
+
+    <script>
+        let client = null;
+        let localAudioTrack = null;
+        let localVideoTrack = null;
+        let isCameraOn = true;
+        let isMicOn = true;
+        const socket = io('http://localhost:5000'); 
+
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const chatBox = document.getElementById('chatBox');
+    const closeChat = document.getElementById('closeChat');
+    const chatToggle = document.getElementById('chatToggle');
+
+
+
+  // Sending message with username (optional if you have usernames)
+sendBtn.addEventListener('click', () => {
+  const message = chatInput.value.trim();
+  if (message) {
+    socket.emit('chat_message', { msg: message, sender: uid });  // Send UID
+    appendChatMessage(`You: ${message}`, 'right'); // Show your message
+    chatInput.value = '';
+  }
+});
+
+
+socket.on('chat_message', (data) => {
+  if (data.sender !== uid) { 
+    appendChatMessage(`Stranger: ${data.msg}`, 'left');
+  }
+});
+
+
+
+chatToggle.addEventListener('click', () => {
+    chatToggle.classList.add('hidden');
+    chatBox.classList.remove('hidden');
+  });
+
+  closeChat.addEventListener('click', () => {
+    chatBox.classList.add('hidden');
+    chatToggle.classList.remove('hidden');
+  });
+  function scrollToBottom() {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+
+
+function appendChatMessage(message, side) {
+  const msgWrapper = document.createElement('div');
+  msgWrapper.className = `w-full flex ${side === 'right' ? 'justify-end' : 'justify-start'} mb-2`;
+
+  const msgElement = document.createElement('div');
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  msgElement.innerHTML = `
+    <div class="p-3 rounded-2xl max-w-[70%] text-sm shadow
+      ${side === 'right' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-900'}">
+      ${message}
+      <div class="text-xs text-gray-200 ${side === 'right' ? '' : 'text-gray-600'} mt-1 text-right">${time}</div>
+    </div>
+  `;
+
+  msgWrapper.appendChild(msgElement);
+  chatMessages.appendChild(msgWrapper);
+  chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
+}
+
+        const appId = "bca6ee4b69a94a33af8b1ff43852fa56";
+        const token = "007eJxTYNhj1rlRxH2Vif0mQwMJfgPdDPbQgwuXhKvu3nl0j0u36gkFhqTkRLPUVJMkM8tES5NEY+PENIskw7Q0E2MLU6O0RFMz/nNP0hsCGRku2OxhZWSAQBCflaEktbjEkIEBAMMdHlw=";
+        const channel = "test1";
+        const uid = Math.floor(Math.random() * 10000);
+        let screenTrack = null;
+document.getElementById("shareScreen").addEventListener("click", async () => {
+    if (!screenTrack) {
+        try {
+            // Start screen sharing
+            screenTrack = await AgoraRTC.createScreenVideoTrack();
+
+            // Replace the local video track with the screen track
+            await client.unpublish(localVideoTrack);
+            await client.publish(screenTrack);
+
+            // Update the UI to show "Stop Sharing"
+            document.getElementById("shareScreen").innerHTML = '<i class="fas fa-stop"></i>';
+            console.log("Screen sharing started.");
+        } catch (error) {
+            console.error("Error starting screen sharing:", error);
+        }
+    } else {
+        try {
+            // Stop screen sharing
+            await client.unpublish(screenTrack);
+            screenTrack.close();
+            screenTrack = null;
+
+            // Re-publish the local video track
+            await client.publish(localVideoTrack);
+
+            // Update the UI to show "Share Screen"
+            document.getElementById("shareScreen").innerHTML = '<i class="fas fa-desktop"></i>';
+            console.log("Screen sharing stopped.");
+        } catch (error) {
+            console.error("Error stopping screen sharing:", error);
+        }
+    }
+});       
+
+
+
+document.getElementById("startCall").addEventListener("click", async () => {
+    try {
+        client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        await client.join(appId, channel, token || null);
+
+        localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+        localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+
+        displayLocalVideo(localVideoTrack);
+        await client.publish([localVideoTrack, localAudioTrack]);
+
+        console.log("Call started successfully!");
+
+        document.getElementById("startCall").disabled = true;
+
+        document.getElementById("endCall").disabled = false;
+        document.getElementById("toggleCamera").disabled = false;
+        document.getElementById("toggleMic").disabled = false;
+        document.getElementById("shareScreen").disabled = false;
+    } catch (error) {
+        console.error("Error starting call:", error);
+    }
+});
+        document.getElementById("endCall").addEventListener("click", async () => {
+            if (localAudioTrack) localAudioTrack.close();
+            if (localVideoTrack) localVideoTrack.close();
+            if (client) {
+                await client.leave();
+                document.getElementById("videoGrid").innerHTML = '<video id="localVideo" autoplay playsinline></video>';
+                console.log("Left channel successfully!");
+                document.getElementById("startCall").disabled = true;
+                document.getElementById("endCall").disabled = true;
+                document.getElementById("toggleCamera").disabled = true;
+                document.getElementById("toggleMic").disabled = true;
+                document.getElementById("shareScreen").disabled = true;
+                
+                 const endCallButton = document.getElementById("endCall");
+        endCallButton.style.backgroundColor = "#9ca3af"; 
+        endCallButton.style.color = "#ffffff";
+            }
+        });
+
+       document.getElementById("toggleCamera").addEventListener("click", async () => {
+    if (isCameraOn) {
+        
+        if (localVideoTrack) {
+            localVideoTrack.close(); 
+            localVideoTrack = null;
+            document.getElementById("toggleCamera").innerHTML = '<i class="fas fa-video-slash"></i>';
+            console.log("Camera turned off.");
+        }
+    } else {
+        // Turn on camera
+        try {
+            localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+            displayLocalVideo(localVideoTrack);
+            await client.publish(localVideoTrack);
+            document.getElementById("toggleCamera").innerHTML = '<i class="fas fa-video"></i>';
+            console.log("Camera turned on.");
+        } catch (error) {
+            console.error("Error starting camera:", error);
+        }
+    }
+    isCameraOn = !isCameraOn;
+});
+
+        document.getElementById("toggleMic").addEventListener("click", async () => {
+            if (isMicOn) {
+                await localAudioTrack.setEnabled(false);
+                document.getElementById("toggleMic").innerHTML = '<i class="fas fa-microphone-slash"></i>';
+                console.log("Microphone muted.");
+                document.getElementById("toggleMic").disabled = false;
+
+            } else {
+                await localAudioTrack.setEnabled(true);
+                document.getElementById("toggleMic").innerHTML = '<i class="fas fa-microphone"></i>';
+                console.log("Microphone unmuted.");
+            }
+            isMicOn = !isMicOn;
+        });
+
+        function displayLocalVideo(track) {
+            const videoElement = document.getElementById("localVideo");
+            videoElement.srcObject = new MediaStream([track.getMediaStreamTrack()]);
+            console.log("Local video started.");
+        }
+
+        function setupRemoteUserListeners() {
+            client.on("user-published", async (user, mediaType) => {
+                await client.subscribe(user, mediaType);
+                if (mediaType === "video") {
+                    displayRemoteVideo(user);
+                }
+                if (mediaType === "audio") {
+                    user.audioTrack.play();
+                }
+            });
+
+            client.on("user-unpublished", (user) => {
+                console.log(`Remote user ${user.uid} left`);
+                removeRemoteVideo(user.uid);
+            });
+        }
+
+        function displayRemoteVideo(user) {
+            const videoGrid = document.getElementById("videoGrid");
+            const videoElement = document.createElement("video");
+            videoElement.id = `remoteVideo-${user.uid}`;
+            videoElement.autoplay = true;
+            videoElement.playsinline = true;
+            videoElement.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+            videoGrid.appendChild(videoElement);
+            console.log(`Remote video playing for UID: ${user.uid}`);
+        }
+
+        function removeRemoteVideo(uid) {
+            const videoElement = document.getElementById(`remoteVideo-${uid}`);
+            if (videoElement) {
+                videoElement.remove();
+                console.log(`Removed video element for UID: ${uid}`);
+            }
+        }
+    </script>
+</body>
+</html>
