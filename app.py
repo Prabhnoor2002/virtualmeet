@@ -135,6 +135,34 @@ def create_meeting():
         return redirect(url_for('trainer_dashboard'))
 
     return render_template('create_meeting.html')
+@app.route('/signup', methods=['GET', 'POST'])
+def signup():
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        role = request.form.get('role', '').strip()
+
+        if not all([name, email, password, role]):
+            flash('All fields are required.', 'danger')
+            return redirect(url_for('signup'))
+
+        conn, cursor = get_db_cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
+                (name, email, password, role)
+            )
+            conn.commit()
+            flash('Signup successful! You can now log in.', 'success')
+            return redirect(url_for('login'))
+        except sqlite3.IntegrityError:
+            flash('Email already exists.', 'danger')
+        finally:
+            conn.close()
+
+    return render_template('signup.html')
+
 
 # -------------------- ADMIN DASHBOARD --------------------
 
