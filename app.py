@@ -138,7 +138,7 @@ def create_meeting():
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
-        name = request.form.get('name', '').strip()
+        name = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         role = request.form.get('role', '').strip()
