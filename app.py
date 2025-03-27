@@ -145,7 +145,7 @@ def signup():
 
         if not all([name, email, password, role]):
             flash('All fields are required.', 'danger')
-            return redirect(url_for('signup'))
+            return redirect(url_for('home'))
 
         conn, cursor = get_db_cursor()
         try:
