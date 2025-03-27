@@ -161,7 +161,7 @@ def signup():
         finally:
             conn.close()
 
-    return render_template('signup.html')
+    return render_template('home.html')
 @app.route('/start_meeting/<string:meeting_id>', methods=['GET', 'POST'])
 def start_meeting(meeting_id):
     conn, cursor = get_db_cursor()
