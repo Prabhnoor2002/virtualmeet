@@ -163,6 +163,7 @@ def signup():
 
     return render_template('home.html')
 @app.route('/start_meeting/<string:meeting_id>', methods=['GET', 'POST'])
+@role_required(['admin','trainer'])
 def start_meeting(meeting_id):
     conn, cursor = get_db_cursor()
     cursor.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,))
