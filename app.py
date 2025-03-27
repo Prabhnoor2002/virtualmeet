@@ -162,7 +162,7 @@ def signup():
             conn.close()
 
     return render_template('signup.html')
-@app.route('/start_meeting/<int:meeting_id>', methods=['GET', 'POST'])
+@app.route('/start_meeting/<string:meeting_id>', methods=['GET', 'POST'])
 def start_meeting(meeting_id):
     conn, cursor = get_db_cursor()
     cursor.execute("SELECT * FROM meetings WHERE id = ?", (meeting_id,))
