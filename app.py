@@ -242,8 +242,10 @@ def start_meeting(meeting_id):
 def meeting_room(meeting_id):
     return render_template('meeting_room.html', meeting_id=meeting_id)
 
-
-# -------------------- ADMIN DASHBOARD --------------------
+@socketio.on('chat_message')
+def handle_chat_message(data):
+    print(f"Received message: {data['msg']} from {data['sender']}")
+    emit('chat_message', data, broadcast=True)  # Broadcast the message to all clients# -------------------- ADMIN DASHBOARD --------------------
 
 @app.route('/admin_dashboard')
 @role_required(['admin'])

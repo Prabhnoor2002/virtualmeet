@@ -87,10 +87,12 @@
 <body>
     <div class="container">
         <h2 class="text-2xl font-semibold mb-4">Meeting Room</h2>
-        <div class="video-grid" id="videoGrid">
-            <video id="localVideo" autoplay playsinline></video>
-        </div>
-        <div class="controls">
+          <div class="video-grid" id="videoGrid">
+    <div class="video-container">
+        <video id="localVideo" autoplay playsinline></video>
+        <div id="localName" class="username-display">Your Name</div>
+    </div>
+</div>      <div class="controls">
     <button id="startCall" class="control-btn"><i class="fas fa-phone"></i></button>
     <button id="endCall" class="control-btn" style="background-color: #dc2626; color: #ffffff;" disabled>
         <i class="fas fa-phone-slash"></i>
@@ -137,27 +139,38 @@
     const closeChat = document.getElementById('closeChat');
     const chatToggle = document.getElementById('chatToggle');
 
+const meeting_id = "{{ meeting_id }}"; 
 
-
-  // Sending message with username (optional if you have usernames)
-sendBtn.addEventListener('click', () => {
-  const message = chatInput.value.trim();
-  if (message) {
-    socket.emit('chat_message', { msg: message, sender: uid });  // Send UID
-    appendChatMessage(`You: ${message}`, 'right'); // Show your message
-    chatInput.value = '';
-  }
+const username = prompt("Enter your name:");
+if (!username) {
+    alert("Username is required to join the meeting.");
+    window.location.href = "/"; // Redirect to the home page if no username is provided
+}sendBtn.addEventListener('click', () => {
+    const message = chatInput.value.trim();
+    if (message) {
+        socket.emit('chat_message', { msg: message, sender: username }); // Send message to the server
+        appendChatMessage(`You: ${message}`, 'right'); // Display your message in the chat
+        chatInput.value = ''; // Clear the input field
+    } else {
+        alert("Message cannot be empty.");
+    }
 });
-
 
 socket.on('chat_message', (data) => {
-  if (data.sender !== uid) { 
-    appendChatMessage(`Stranger: ${data.msg}`, 'left');
+  if (data.sender === username) return;
+    appendChatMessage(`${data.sender}: ${data.msg}`, 'left');
   }
+);
+
+window.addEventListener('beforeunload', () => {
+    socket.emit('leave', { room: room, username: username });
 });
-
-
-
+const localNameElement = document.getElementById('localName');
+if (localNameElement) {
+    localNameElement.innerText = username;
+} else {
+    console.warn("Element with ID 'localName' not found.");
+}
 chatToggle.addEventListener('click', () => {
     chatToggle.classList.add('hidden');
     chatBox.classList.remove('hidden');
