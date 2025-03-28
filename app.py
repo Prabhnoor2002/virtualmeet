@@ -168,6 +168,24 @@ def create_meeting():
         return redirect(url_for('trainer_dashboard'))
 
     return render_template('create_meeting.html')
+# filepath: c:\Users\Dell\OneDrive\Desktop\virtualmeet\app.py
+@app.route('/delete_meeting/<meeting_id>', methods=['DELETE'])
+def delete_meeting(meeting_id):
+    if 'role' not in session or session['role'] != 'admin':
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    conn, cursor = get_db_cursor()
+    try:
+        cursor.execute("DELETE FROM meetings WHERE meeting_id = ?", (meeting_id,))
+        conn.commit()
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Meeting not found'}), 404
+        return '', 204  # No Content
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return jsonify({'error': 'Database error'}), 500
+    finally:
+        conn.close()
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
