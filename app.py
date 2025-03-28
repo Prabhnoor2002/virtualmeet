@@ -267,7 +267,80 @@ def trainer_dashboard():
         conn.close()
 
     return render_template('trainer_dashboard.html', meetings=meetings)
+@app.route('/reset_password/<reset_token>', methods=['GET', 'POST'])
+def reset_password(reset_token):
+    if request.method == 'POST':
+        new_password = request.form.get('new_password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
 
+        if not new_password or not confirm_password:
+            flash('All fields are required.', 'danger')
+            return redirect(url_for('reset_password', reset_token=reset_token))
+
+        if new_password != confirm_password:
+            flash('Passwords do not match.', 'danger')
+            return redirect(url_for('reset_password', reset_token=reset_token))
+
+        conn, cursor = get_db_cursor()
+        try:
+            # Verify the reset token
+            cursor.execute("SELECT * FROM users WHERE reset_token = ?", (reset_token,))
+            user = cursor.fetchone()
+            if not user:
+                flash('Invalid or expired reset token.', 'danger')
+                return redirect(url_for('reset_password_request'))
+
+            # Update the password and clear the reset token
+            cursor.execute("UPDATE users SET password = ?, reset_token = NULL WHERE reset_token = ?", (new_password, reset_token))
+            conn.commit()
+
+            flash('Password reset successfully! You can now log in.', 'success')
+            return redirect(url_for('login'))
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+            flash('An error occurred while resetting your password.', 'danger')
+        finally:
+            conn.close()
+
+    return render_template('reset_password.html', reset_token=reset_token)
+@app.route('/reset_password_request', methods=['GET', 'POST'])
+def reset_password_request():
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+
+        if not email:
+            flash('Email is required.', 'danger')
+            return redirect(url_for('reset_password_request'))
+
+        conn, cursor = get_db_cursor()
+        try:
+            # Check if the email exists in the database
+            cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
+            user = cursor.fetchone()
+            if not user:
+                flash('Email not found.', 'danger')
+                return redirect(url_for('reset_password_request'))
+
+            # Generate a unique reset token
+            reset_token = secrets.token_hex(16)
+
+            # Save the token in the database (optional: add an expiration time)
+            cursor.execute("UPDATE users SET reset_token = ? WHERE email = ?", (reset_token, email))
+            conn.commit()
+
+            # Send the reset link to the user's email
+            reset_link = f"{request.url_root}reset_password/{reset_token}"
+            print(f"Reset link (for testing): {reset_link}")  # Replace with actual email sending logic
+
+            flash('A reset link has been sent to your email.', 'success')
+            return redirect(url_for('login'))
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+            flash('An error occurred while processing your request.', 'danger')
+        finally:
+            conn.close()
+
+    return render_template('reset_password_req.html')
 # -------------------- LOGIN --------------------
 
 @app.route('/login', methods=['GET', 'POST'])
