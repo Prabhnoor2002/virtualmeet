@@ -9,6 +9,7 @@ from functools import wraps
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from datetime import datetime, timedelta
 
 
 load_dotenv()
@@ -55,12 +56,19 @@ def initialize_db():
                 status TEXT DEFAULT 'scheduled'
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS password_resets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                reset_token TEXT NOT NULL,
+                expires_at DATETIME NOT NULL
+            )
+        ''')
         conn.commit()
     except sqlite3.Error as e:
         print(f"Database initialization error: {e}")
     finally:
         conn.close()
-
 initialize_db()
 
 # -------------------- ROLE-BASED ACCESS DECORATOR --------------------
@@ -277,6 +285,8 @@ def reset_password(reset_token):
         new_password = request.form.get('new_password', '').strip()
         confirm_password = request.form.get('confirm_password', '').strip()
 
+        print(f"New Password: {new_password}, Confirm Password: {confirm_password}")  # Debugging log
+
         if not new_password or not confirm_password:
             flash('All fields are required.', 'danger')
             return redirect(url_for('reset_password', reset_token=reset_token))
@@ -288,29 +298,37 @@ def reset_password(reset_token):
         conn, cursor = get_db_cursor()
         try:
             # Verify the reset token
-            cursor.execute("SELECT * FROM users WHERE reset_token = ?", (reset_token,))
-            user = cursor.fetchone()
-            if not user:
+            cursor.execute(
+                "SELECT * FROM password_resets WHERE reset_token = ? AND expires_at > ?",
+                (reset_token, datetime.now())
+            )
+            reset_entry = cursor.fetchone()
+            print(f"Reset Entry: {reset_entry}")  # Debugging log
+
+            if not reset_entry:
                 flash('Invalid or expired reset token.', 'danger')
                 return redirect(url_for('reset_password_request'))
 
-            # Update the password and clear the reset token
-            cursor.execute("UPDATE users SET password = ?, reset_token = NULL WHERE reset_token = ?", (new_password, reset_token))
+            # Update the password in the users table
+            cursor.execute(
+                "UPDATE users SET password = ? WHERE email = ?",
+                (new_password, reset_entry['email'])
+            )
+            print(f"Password updated for email: {reset_entry['email']}")  # Debugging log
+
+            # Delete the reset token
+            cursor.execute("DELETE FROM password_resets WHERE reset_token = ?", (reset_token,))
             conn.commit()
 
             flash('Password reset successfully! You can now log in.', 'success')
             return redirect(url_for('login'))
         except sqlite3.Error as e:
-            print(f"Database error: {e}")
+            print(f"Database error: {e}")  # Debugging log
             flash('An error occurred while resetting your password.', 'danger')
         finally:
             conn.close()
 
     return render_template('reset_password.html', reset_token=reset_token)
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
 @app.route('/reset_password_request', methods=['GET', 'POST'])
 def reset_password_request():
     if request.method == 'POST':
@@ -331,9 +349,13 @@ def reset_password_request():
 
             # Generate a unique reset token
             reset_token = secrets.token_hex(16)
+            expires_at = datetime.now() + timedelta(hours=1)  # Token expires in 1 hour
 
-            # Save the token in the database
-            cursor.execute("UPDATE users SET reset_token = ? WHERE email = ?", (reset_token, email))
+            # Save the token in the password_resets table
+            cursor.execute(
+                "INSERT INTO password_resets (email, reset_token, expires_at) VALUES (?, ?, ?)",
+                (email, reset_token, expires_at)
+            )
             conn.commit()
 
             # Send the reset link to the user's email
@@ -345,6 +367,8 @@ def reset_password_request():
             You requested to reset your password. Click the link below to reset it:
 
             {reset_link}
+
+            This link will expire in 1 hour.
 
             If you did not request this, please ignore this email.
 
@@ -368,11 +392,8 @@ def reset_password_request():
             # Send the email
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
-                print("Starting TLS...")  # Debugging log
                 server.login(sender_email, sender_password)
-                print("Logged in to SMTP server...")  # Debugging log
                 server.sendmail(sender_email, email, msg.as_string())
-                print("Email sent successfully!")  # Debugging log
 
             flash('A reset link has been sent to your email.', 'success')
             return redirect(url_for('login'))
@@ -385,8 +406,7 @@ def reset_password_request():
         finally:
             conn.close()
 
-    return render_template('reset_password_req.html')
-# -------------------- LOGIN --------------------
+    return render_template('reset_password_req.html')# -------------------- LOGIN --------------------
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
