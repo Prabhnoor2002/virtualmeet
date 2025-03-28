@@ -95,11 +95,15 @@ def join_meeting():
     meeting_id = request.form.get('meeting_id', '').strip()
     print(f"Received Meeting ID: {meeting_id}")  # Debugging log
 
+    # Extract meeting_id if it's a full URL
+    if "http" in meeting_id:
+        meeting_id = meeting_id.split("/")[-1]  # Extract the last part of the URL
+        print(f"Extracted Meeting ID: {meeting_id}")  # Debugging log
+
     if not meeting_id:
         flash('Meeting ID or link is required.', 'danger')
         return redirect(url_for('user_dashboard'))
 
-    # Check if the meeting exists in the database
     conn, cursor = get_db_cursor()
     try:
         cursor.execute("SELECT * FROM meetings WHERE meeting_id = ?", (meeting_id,))
@@ -107,8 +111,10 @@ def join_meeting():
         print(f"Query Result: {meeting}")  # Debugging log
 
         if meeting:
+            print(f"Meeting Found: {meeting['meeting_name']}")  # Debugging log
             return redirect(url_for('meeting_room', meeting_id=meeting_id))
         else:
+            print("Meeting not found.")  # Debugging log
             flash('Meeting not found. Please check the Meeting ID or link.', 'danger')
     except sqlite3.Error as e:
         print(f"Database error: {e}")  # Debugging log
