@@ -353,8 +353,8 @@ def reset_password_request():
             """
 
             # SMTP Configuration
-            sender_email = "20211460@sbsstc.ac.in"  
-            sender_password = "afvg zbgz anhe zdaa"  
+            sender_email = "20211460@sbsstc.ac.in"
+            sender_password = "afvg zbgz anhe zdaa"
             smtp_server = "smtp.gmail.com"
             smtp_port = 587
 
@@ -368,8 +368,11 @@ def reset_password_request():
             # Send the email
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
+                print("Starting TLS...")  # Debugging log
                 server.login(sender_email, sender_password)
+                print("Logged in to SMTP server...")  # Debugging log
                 server.sendmail(sender_email, email, msg.as_string())
+                print("Email sent successfully!")  # Debugging log
 
             flash('A reset link has been sent to your email.', 'success')
             return redirect(url_for('login'))
