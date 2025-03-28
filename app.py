@@ -353,8 +353,8 @@ def reset_password_request():
             """
 
             # SMTP Configuration
-            sender_email = "your_email@gmail.com"  # Replace with your email
-            sender_password = "your_email_password"  # Replace with your email password
+            sender_email = "20211460@sbsstc.ac.in"  
+            sender_password = "afvg zbgz anhe zdaa"  
             smtp_server = "smtp.gmail.com"
             smtp_port = 587
 
