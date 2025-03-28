@@ -6,6 +6,10 @@ import secrets
 import sqlite3
 import os
 from functools import wraps
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 
 load_dotenv()
 
@@ -303,6 +307,10 @@ def reset_password(reset_token):
             conn.close()
 
     return render_template('reset_password.html', reset_token=reset_token)
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 @app.route('/reset_password_request', methods=['GET', 'POST'])
 def reset_password_request():
     if request.method == 'POST':
@@ -324,19 +332,53 @@ def reset_password_request():
             # Generate a unique reset token
             reset_token = secrets.token_hex(16)
 
-            # Save the token in the database (optional: add an expiration time)
+            # Save the token in the database
             cursor.execute("UPDATE users SET reset_token = ? WHERE email = ?", (reset_token, email))
             conn.commit()
 
             # Send the reset link to the user's email
             reset_link = f"{request.url_root}reset_password/{reset_token}"
-            print(f"Reset link (for testing): {reset_link}")  # Replace with actual email sending logic
+            subject = "Password Reset Request"
+            body = f"""
+            Hi {user['name']},
+
+            You requested to reset your password. Click the link below to reset it:
+
+            {reset_link}
+
+            If you did not request this, please ignore this email.
+
+            Thanks,
+            VirtualMeet Team
+            """
+
+            # SMTP Configuration
+            sender_email = "your_email@gmail.com"  # Replace with your email
+            sender_password = "your_email_password"  # Replace with your email password
+            smtp_server = "smtp.gmail.com"
+            smtp_port = 587
+
+            # Create the email
+            msg = MIMEMultipart()
+            msg['From'] = sender_email
+            msg['To'] = email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
+
+            # Send the email
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.starttls()
+                server.login(sender_email, sender_password)
+                server.sendmail(sender_email, email, msg.as_string())
 
             flash('A reset link has been sent to your email.', 'success')
             return redirect(url_for('login'))
         except sqlite3.Error as e:
             print(f"Database error: {e}")
             flash('An error occurred while processing your request.', 'danger')
+        except smtplib.SMTPException as e:
+            print(f"SMTP error: {e}")
+            flash('An error occurred while sending the email.', 'danger')
         finally:
             conn.close()
 
