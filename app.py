@@ -243,9 +243,33 @@ def meeting_room(meeting_id):
     return render_template('meeting_room.html', meeting_id=meeting_id)
 
 @socketio.on('chat_message')
-def handle_chat_message(data):
-    print(f"Received message: {data['msg']} from {data['sender']}")
-    emit('chat_message', data, broadcast=True)  # Broadcast the message to all clients# -------------------- ADMIN DASHBOARD --------------------
+def handle_chat(data):
+    print(f"Received message: {data}")
+    # Broadcast to everyone INCLUDING sender
+    emit('chat_message', data, broadcast=True)
+
+
+participants = {}
+
+@socketio.on('join')
+def handle_join(data):
+    room = data['room']
+    username = data['username']
+    role = data.get('role', 'user')  # Default to 'user' if role is not provided
+    join_room(room)
+    if room not in participants:
+        participants[room] = []
+    participants[room].append({'username': username, 'role': role})
+    emit('participant_joined', {'username': username, 'role': role, 'participants': participants[room]}, room=room)
+
+@socketio.on('leave')
+def handle_leave(data):
+    room = data['room']
+    username = data['username']
+    leave_room(room)
+    if room in participants:
+        participants[room] = [p for p in participants[room] if p['username'] != username]
+    emit('participant_left', {'username': username, 'participants': participants[room]}, room=room)
 
 @app.route('/admin_dashboard')
 @role_required(['admin'])
@@ -452,11 +476,13 @@ def logout():
 
 # -------------------- SOCKET.IO --------------------
 
-@socketio.on('chat_message')
-def handle_chat(data):
-    emit('chat_message', data, broadcast=True)
 
 # -------------------- RUN APP --------------------
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
+
+
+
+
+

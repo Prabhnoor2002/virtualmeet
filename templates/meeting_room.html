@@ -44,6 +44,21 @@
             object-fit: cover;
             border: 2px solid #2563eb;
         }
+        .video-container {
+    position: relative;
+}
+
+.name-overlay {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background-color: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
         .controls {
             display: flex;
             justify-content: center;
@@ -78,21 +93,25 @@
   #chatMessages div {
     animation: fadeIn 0.3s ease forwards;
   }
+
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
+
     </style>
 </head>
 <body>
     <div class="container">
         <h2 class="text-2xl font-semibold mb-4">Meeting Room</h2>
-          <div class="video-grid" id="videoGrid">
-    <div class="video-container">
-        <video id="localVideo" autoplay playsinline></video>
-        <div id="localName" class="username-display">Your Name</div>
-    </div>
-</div>      <div class="controls">
+        <div class="video-grid" id="videoGrid">
+            <div class="video-container">
+                <video id="localVideo" autoplay playsinline></video>
+                <div id="localName" class="name-overlay"></div>
+            </div>
+        </div>
+        
+        <div class="controls">
     <button id="startCall" class="control-btn"><i class="fas fa-phone"></i></button>
     <button id="endCall" class="control-btn" style="background-color: #dc2626; color: #ffffff;" disabled>
         <i class="fas fa-phone-slash"></i>
@@ -101,9 +120,28 @@
     <button id="toggleMic" class="control-btn" disabled><i class="fas fa-microphone"></i></button>
     <button id="shareScreen" class="control-btn bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded" disabled>
         <i class="fas fa-desktop"></i> 
+
     </button>
+    <button id="startRecording" class="control-btn bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded">
+        <i class="fas fa-circle"></i> 
+    </button>
+    <button id="stopRecording" class="control-btn bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded" disabled>
+        <i class="fas fa-stop-circle"></i> 
+    </button>
+    
+    
 </div>
     </div>
+    <div id="participantsSidebar" class="fixed left-0 top-0 h-full w-64 bg-white shadow-lg overflow-y-auto hidden">
+        <div class="p-4 bg-blue-600 text-white">
+            <h3 class="text-lg font-semibold">Participants</h3>
+            <button id="closeSidebar" class="text-white"><i class="fas fa-times"></i></button>
+        </div>
+        <ul id="participantsList" class="p-4"></ul>
+    </div>
+    <button id="openSidebar" class="fixed left-8 bottom-8 bg-blue-600 text-white p-4 rounded-full shadow-lg cursor-pointer transition-all hover:bg-blue-700">
+        <i class="fas fa-users text-xl"></i>
+    </button>
     <div id="chatToggle" class="fixed right-8 bottom-8 bg-blue-600 text-white p-4 rounded-full shadow-lg cursor-pointer transition-all hover:bg-blue-700">
         <i class="fas fa-comments text-xl"></i>
       </div>
@@ -120,7 +158,8 @@
           <button id="sendBtn" class="ml-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Send</button>
         </div>
       </div>
-       
+      
+    
     <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.11.0"></script>
 
@@ -130,7 +169,14 @@
         let localVideoTrack = null;
         let isCameraOn = true;
         let isMicOn = true;
-        const socket = io('http://localhost:5000'); 
+        let mediaRecorder;
+        let recordedChunks = [];
+        let canvas = document.createElement('canvas');
+let ctx = canvas.getContext('2d');
+
+        
+
+        const socket = io('http://localhost:5000'); // Your Flask server with Socket.io
 
     const chatMessages = document.getElementById('chatMessages');
     const chatInput = document.getElementById('chatInput');
@@ -138,39 +184,204 @@
     const chatBox = document.getElementById('chatBox');
     const closeChat = document.getElementById('closeChat');
     const chatToggle = document.getElementById('chatToggle');
-
+    const participantsList = document.getElementById('participantsList');
+const openSidebar = document.getElementById('openSidebar');
+const closeSidebar = document.getElementById('closeSidebar');
+const participantsSidebar = document.getElementById('participantsSidebar');
 const meeting_id = "{{ meeting_id }}"; 
 
 const username = prompt("Enter your name:");
-if (!username) {
-    alert("Username is required to join the meeting.");
-    window.location.href = "/"; // Redirect to the home page if no username is provided
-}sendBtn.addEventListener('click', () => {
-    const message = chatInput.value.trim();
-    if (message) {
-        socket.emit('chat_message', { msg: message, sender: username }); // Send message to the server
-        appendChatMessage(`You: ${message}`, 'right'); // Display your message in the chat
-        chatInput.value = ''; // Clear the input field
-    } else {
-        alert("Message cannot be empty.");
-    }
+document.getElementById('localName').innerText = username;
+const room = meeting_id; // Assuming meeting_id is available in the scope
+
+socket.emit('join', { room: room, username: username, role: 'user' });
+
+socket.on('participant_joined', (data) => {
+    updateParticipantsList(data.participants);
+    appendChatMessage(`${data.username} joined the meeting`, 'center');
 });
 
-socket.on('chat_message', (data) => {
-  if (data.sender === username) return;
-    appendChatMessage(`${data.sender}: ${data.msg}`, 'left');
-  }
-);
+socket.on('participant_left', (data) => {
+    updateParticipantsList(data.participants);
+    appendChatMessage(`${data.username} left the meeting`, 'center');
+});
 
+function updateParticipantsList(participants) {
+    participantsList.innerHTML = '';
+    participants.forEach(participant => {
+        const participantItem = document.createElement('li');
+        participantItem.className = 'p-2 border-b border-gray-300 flex items-center justify-between';
+
+        let nameSpan = document.createElement('span');
+        nameSpan.textContent = participant.username;
+
+        if (participant.role === 'admin') {
+            let badge = document.createElement('span');
+            badge.textContent = 'Admin';
+            badge.className = 'ml-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full';
+            participantItem.appendChild(nameSpan);
+            participantItem.appendChild(badge);
+        } else {
+            participantItem.appendChild(nameSpan);
+        }
+
+        participantsList.appendChild(participantItem);
+    });
+}
+
+// Emit leave event when the user leaves the page
 window.addEventListener('beforeunload', () => {
     socket.emit('leave', { room: room, username: username });
 });
-const localNameElement = document.getElementById('localName');
-if (localNameElement) {
-    localNameElement.innerText = username;
-} else {
-    console.warn("Element with ID 'localName' not found.");
+
+openSidebar.addEventListener('click', () => {
+    participantsSidebar.classList.remove('hidden');
+});
+
+closeSidebar.addEventListener('click', () => {
+    participantsSidebar.classList.add('hidden');
+});
+
+// function addParticipant(name) {
+//     const participantItem = document.createElement('li');
+//     participantItem.className = 'p-2 border-b border-gray-300';
+//     participantItem.textContent = name;
+//     participantsList.appendChild(participantItem);
+// }
+
+function removeParticipant(name) {
+    const participantItems = participantsList.getElementsByTagName('li');
+    for (let item of participantItems) {
+        if (item.textContent === name) {
+            item.remove();
+            break;
+        }
+    }
 }
+document.getElementById('startRecording').addEventListener('click', startScreenRecording);
+document.getElementById('stopRecording').addEventListener('click', stopScreenRecording);
+
+async function startScreenRecording() {
+  try {
+    // Capture the entire screen
+    const screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: "browser"
+      },
+      audio: true
+    });
+
+    // Set canvas size to match the screen
+    const screenVideo = document.createElement('video');
+    screenVideo.srcObject = screenStream;
+    await screenVideo.play();
+    canvas.width = screenVideo.videoWidth || window.innerWidth;
+    canvas.height = screenVideo.videoHeight || window.innerHeight;
+
+    console.log('Canvas initialized:', canvas.width, canvas.height);
+
+    // Draw only the screen content on the canvas
+    function drawFrame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(screenVideo, 0, 0, canvas.width, canvas.height);
+      requestAnimationFrame(drawFrame);
+    }
+    drawFrame();
+
+    // Record the canvas output
+    const outputStream = canvas.captureStream(30);
+    mediaRecorder = new MediaRecorder(outputStream, { mimeType: 'video/webm' });
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        recordedChunks.push(e.data);
+      }
+    };
+
+    mediaRecorder.onstop = saveRecording;
+    mediaRecorder.start();
+
+    // UI Updates
+    document.getElementById('startRecording').disabled = true;
+    document.getElementById('stopRecording').disabled = false;
+
+    console.log("Recording started...");
+  } catch (error) {
+    console.error("Error starting screen recording:", error);
+    alert("Failed to start recording. Please check permissions.");
+  }
+}
+
+function stopScreenRecording() {
+  if (mediaRecorder) {
+    mediaRecorder.stop();
+    console.log("Recording stopped.");
+
+    // UI Updates
+    document.getElementById('startRecording').disabled = false;
+    document.getElementById('stopRecording').disabled = true;
+  }
+}
+
+function saveRecording() {
+  const blob = new Blob(recordedChunks, { type: 'video/webm' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `meeting-recording-${Date.now()}.webm`;
+  a.click();
+
+  console.log("Recording saved successfully.");
+}
+
+// Modify the setupRemoteUserListeners function to include participant management
+function setupRemoteUserListeners() {
+    client.on("user-published", async (user, mediaType) => {
+        await client.subscribe(user, mediaType);
+        if (mediaType === "video") {
+            displayRemoteVideo(user);
+        }
+        if (mediaType === "audio") {
+            user.audioTrack.play();
+        }
+        addParticipant({ username: `User ${user.uid}`, role: 'user' }); // Add participant to the list
+    });
+
+    client.on("user-unpublished", (user) => {
+        console.log(`Remote user ${user.uid} left`);
+        removeRemoteVideo(user.uid);
+        removeParticipant(`User ${user.uid}`); // Remove participant from the list
+    });
+
+    client.on("user-left", (user) => {
+        console.log(`Remote user ${user.uid} left`);
+        removeRemoteVideo(user.uid);
+        removeParticipant(`User ${user.uid}`); // Remove participant from the list
+    });
+}
+
+
+
+  // Sending message with username (optional if you have usernames)
+  sendBtn.addEventListener('click', () => {
+  const message = chatInput.value.trim();
+  if (message) {
+    socket.emit('chat_message', { msg: message, sender: username }); // Include sender
+    appendChatMessage(`You: ${message}`, 'right'); // Show your message
+    chatInput.value = '';
+  }
+});
+
+
+
+socket.on('chat_message', (data) => {
+  if (data.sender === username) return; // Avoid duplicate message
+  appendChatMessage(`${data.sender}: ${data.msg}`, 'left'); // Display actual sender's name
+});
+
+
+
+
 chatToggle.addEventListener('click', () => {
     chatToggle.classList.add('hidden');
     chatBox.classList.remove('hidden');
@@ -186,6 +397,7 @@ chatToggle.addEventListener('click', () => {
 
 
 
+// Auto-Scroll Enhancement on New Message
 function appendChatMessage(message, side) {
   const msgWrapper = document.createElement('div');
   msgWrapper.className = `w-full flex ${side === 'right' ? 'justify-end' : 'justify-start'} mb-2`;
@@ -238,7 +450,7 @@ document.getElementById("shareScreen").addEventListener("click", async () => {
             await client.publish(localVideoTrack);
 
             // Update the UI to show "Share Screen"
-            document.getElementById("shareScreen").innerHTML = '<i class="fas fa-desktop"></i>';
+            document.getElementById("shareScreen").innerHTML = '<i class="fas fa-desktop"></i> Share Screen';
             console.log("Screen sharing stopped.");
         } catch (error) {
             console.error("Error stopping screen sharing:", error);
@@ -250,9 +462,11 @@ document.getElementById("shareScreen").addEventListener("click", async () => {
 
 document.getElementById("startCall").addEventListener("click", async () => {
     try {
+        // Initialize Agora client
         client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
         await client.join(appId, channel, token || null);
 
+        // Create and publish local tracks
         localVideoTrack = await AgoraRTC.createCameraVideoTrack();
         localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
 
@@ -260,9 +474,12 @@ document.getElementById("startCall").addEventListener("click", async () => {
         await client.publish([localVideoTrack, localAudioTrack]);
 
         console.log("Call started successfully!");
+        setupRemoteUserListeners();
 
+        // Disable the "Start Call" button
         document.getElementById("startCall").disabled = true;
 
+        // Enable all other buttons
         document.getElementById("endCall").disabled = false;
         document.getElementById("toggleCamera").disabled = false;
         document.getElementById("toggleMic").disabled = false;
@@ -271,63 +488,78 @@ document.getElementById("startCall").addEventListener("click", async () => {
         console.error("Error starting call:", error);
     }
 });
-        document.getElementById("endCall").addEventListener("click", async () => {
-            if (localAudioTrack) localAudioTrack.close();
-            if (localVideoTrack) localVideoTrack.close();
-            if (client) {
-                await client.leave();
-                document.getElementById("videoGrid").innerHTML = '<video id="localVideo" autoplay playsinline></video>';
-                console.log("Left channel successfully!");
-                document.getElementById("startCall").disabled = true;
-                document.getElementById("endCall").disabled = true;
-                document.getElementById("toggleCamera").disabled = true;
-                document.getElementById("toggleMic").disabled = true;
-                document.getElementById("shareScreen").disabled = true;
-                
-                 const endCallButton = document.getElementById("endCall");
+document.getElementById("endCall").addEventListener("click", async () => {
+    try {
+        // Stop and close the tracks
+        if (localAudioTrack) {
+            localAudioTrack.stop();
+            localAudioTrack.close();
+            localAudioTrack = null;
+        }
+        if (localVideoTrack) {
+            localVideoTrack.stop();
+            localVideoTrack.close();
+            localVideoTrack = null;
+        }
+        
+        // Leave the Agora channel
+        if (client) {
+            await client.leave();
+            client = null;
+            document.getElementById("videoGrid").innerHTML = '<video id="localVideo" autoplay playsinline></video>';
+            console.log("Left channel and cleared video.");
+        }
+
+        // Update UI
+        document.getElementById("startCall").disabled = false;
+        document.getElementById("endCall").disabled = true;
+        document.getElementById("toggleCamera").disabled = true;
+        document.getElementById("toggleMic").disabled = true;
+        document.getElementById("shareScreen").disabled = true;
+
+        const endCallButton = document.getElementById("endCall");
         endCallButton.style.backgroundColor = "#9ca3af"; 
         endCallButton.style.color = "#ffffff";
-            }
-        });
-
-       document.getElementById("toggleCamera").addEventListener("click", async () => {
-    if (isCameraOn) {
-        
-        if (localVideoTrack) {
-            localVideoTrack.close(); 
-            localVideoTrack = null;
-            document.getElementById("toggleCamera").innerHTML = '<i class="fas fa-video-slash"></i>';
-            console.log("Camera turned off.");
-        }
-    } else {
-        // Turn on camera
-        try {
-            localVideoTrack = await AgoraRTC.createCameraVideoTrack();
-            displayLocalVideo(localVideoTrack);
-            await client.publish(localVideoTrack);
-            document.getElementById("toggleCamera").innerHTML = '<i class="fas fa-video"></i>';
-            console.log("Camera turned on.");
-        } catch (error) {
-            console.error("Error starting camera:", error);
-        }
+    } catch (error) {
+        console.error("Error ending call:", error);
     }
-    isCameraOn = !isCameraOn;
 });
 
-        document.getElementById("toggleMic").addEventListener("click", async () => {
-            if (isMicOn) {
-                await localAudioTrack.setEnabled(false);
-                document.getElementById("toggleMic").innerHTML = '<i class="fas fa-microphone-slash"></i>';
-                console.log("Microphone muted.");
-                document.getElementById("toggleMic").disabled = false;
 
-            } else {
-                await localAudioTrack.setEnabled(true);
-                document.getElementById("toggleMic").innerHTML = '<i class="fas fa-microphone"></i>';
-                console.log("Microphone unmuted.");
-            }
-            isMicOn = !isMicOn;
-        });
+document.getElementById("toggleCamera").addEventListener("click", async () => {
+    try {
+        if (localVideoTrack) {
+            const isEnabled = localVideoTrack.enabled;
+            await localVideoTrack.setEnabled(!isEnabled);
+            document.getElementById("toggleCamera").innerHTML = isEnabled
+                ? '<i class="fas fa-video-slash"></i>'
+                : '<i class="fas fa-video"></i>';
+            console.log(isEnabled ? "Camera turned off." : "Camera turned on.");
+        } else {
+            console.warn("No video track available.");
+        }
+    } catch (error) {
+        console.error("Error toggling camera:", error);
+    }
+});
+
+
+document.getElementById("toggleMic").addEventListener("click", async () => {
+    try {
+        if (localAudioTrack) {
+            const isEnabled = localAudioTrack.enabled;
+            await localAudioTrack.setEnabled(!isEnabled);
+            document.getElementById("toggleMic").innerHTML = isEnabled
+                ? '<i class="fas fa-microphone-slash"></i>'
+                : '<i class="fas fa-microphone"></i>';
+            console.log(isEnabled ? "Microphone muted." : "Microphone unmuted.");
+        } else {
+            console.warn("No audio track available.");
+        }
+    } catch (error) {
+        console.error("Error toggling mic:", error);
+    }
+});
 
         function displayLocalVideo(track) {
             const videoElement = document.getElementById("localVideo");
@@ -336,32 +568,164 @@ document.getElementById("startCall").addEventListener("click", async () => {
         }
 
         function setupRemoteUserListeners() {
-            client.on("user-published", async (user, mediaType) => {
-                await client.subscribe(user, mediaType);
-                if (mediaType === "video") {
-                    displayRemoteVideo(user);
-                }
-                if (mediaType === "audio") {
-                    user.audioTrack.play();
-                }
-            });
+    client.on("user-published", async (user, mediaType) => {
+        try {
+            await client.subscribe(user, mediaType);
 
-            client.on("user-unpublished", (user) => {
-                console.log(`Remote user ${user.uid} left`);
-                removeRemoteVideo(user.uid);
-            });
+            if (mediaType === "video" && user.videoTrack) {
+                displayRemoteVideo(user);
+            }
+            
+            if (mediaType === "audio" && user.audioTrack) {
+                user.audioTrack.play();
+            }
+        } catch (error) {
+            console.error("Error subscribing to user:", error);
         }
+    });
 
-        function displayRemoteVideo(user) {
-            const videoGrid = document.getElementById("videoGrid");
-            const videoElement = document.createElement("video");
-            videoElement.id = `remoteVideo-${user.uid}`;
-            videoElement.autoplay = true;
-            videoElement.playsinline = true;
-            videoElement.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
-            videoGrid.appendChild(videoElement);
-            console.log(`Remote video playing for UID: ${user.uid}`);
+    client.on("user-unpublished", (user) => {
+        console.log(`Remote user ${user.uid} left`);
+        removeRemoteVideo(user.uid);
+    });
+}
+
+function displayRemoteVideo(user) {
+    const videoGrid = document.getElementById("videoGrid");
+    let container = document.getElementById(`user-container-${user.uid}`);
+
+    if (!container) {
+        container = document.createElement("div");
+        container.id = `user-container-${user.uid}`;
+        container.className = "video-container relative w-80 h-60 rounded-lg overflow-hidden bg-gray-800";
+        videoGrid.appendChild(container);
+    }
+
+    // Video Element
+    let videoElement = document.getElementById(`remoteVideo-${user.uid}`);
+    if (!videoElement) {
+        videoElement = document.createElement("video");
+        videoElement.id = `remoteVideo-${user.uid}`;
+        videoElement.autoplay = true;
+        videoElement.playsinline = true;
+        videoElement.className = "w-full h-full";
+        container.appendChild(videoElement);
+    }
+
+    // Placeholder for when Camera is Off
+    let placeholder = document.getElementById(`placeholder-${user.uid}`);
+    if (!placeholder) {
+        placeholder = document.createElement("div");
+        placeholder.id = `placeholder-${user.uid}`;
+        placeholder.className = "flex justify-center items-center w-full h-full text-4xl font-bold bg-gray-400 text-white rounded-lg";
+        placeholder.textContent = getInitials(user.username || `User ${user.uid}`);
+        container.appendChild(placeholder);
+    }
+
+    // Name Overlay
+    let nameOverlay = document.getElementById(`name-overlay-${user.uid}`);
+    if (!nameOverlay) {
+        nameOverlay = document.createElement("div");
+        nameOverlay.id = `name-overlay-${user.uid}`;
+        nameOverlay.className = "absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded-md";
+        nameOverlay.textContent = user.username || `User ${user.uid}`;
+        container.appendChild(nameOverlay);
+    }
+
+    // Show Video or Placeholder
+    if (user.videoTrack) {
+        videoElement.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+        videoElement.style.display = "block";
+        placeholder.style.display = "none";
+    } else {
+        videoElement.style.display = "none";
+        placeholder.style.display = "flex";
+    }
+}
+
+// Event for Camera Off
+client.on("user-unpublished", (user) => {
+    console.log(`Remote user ${user.uid} turned off their camera`);
+    const videoElement = document.getElementById(`remoteVideo-${user.uid}`);
+    const placeholder = document.getElementById(`placeholder-${user.uid}`);
+    
+    if (videoElement) {
+        videoElement.style.display = "none";
+        placeholder.style.display = "flex";
+    }
+});
+
+// Event for Camera On
+client.on("user-published", async (user, mediaType) => {
+    try {
+        await client.subscribe(user, mediaType);
+        if (mediaType === "video") {
+            displayRemoteVideo(user);
         }
+        if (mediaType === "audio") {
+            user.audioTrack.play();
+        }
+    } catch (error) {
+        console.error("Error subscribing to user:", error);
+    }
+});
+
+// Get Initials from Name
+function getInitials(name) {
+    return name
+        .split(" ")
+        .map(word => word[0].toUpperCase())
+        .join("");
+}
+
+
+// Handle When Camera is Turned Off
+client.on("user-unpublished", (user) => {
+    console.log(`Remote user ${user.uid} unpublished video.`);
+    const videoElement = document.getElementById(`remoteVideo-${user.uid}`);
+    const placeholder = document.getElementById(`placeholder-${user.uid}`);
+    
+    if (videoElement) {
+        videoElement.style.display = "none";
+        placeholder.style.display = "flex";
+        console.log(`Showing placeholder for UID: ${user.uid}`);
+    }
+});
+
+// Helper to Get Initials
+function getInitials(name) {
+    return name
+        .split(" ")
+        .map(word => word[0].toUpperCase())
+        .join("");
+}
+
+client.on("user-unpublished", (user) => {
+    console.log(`Remote user ${user.uid} unpublished video.`);
+    const videoElement = document.getElementById(`remoteVideo-${user.uid}`);
+    const placeholder = document.getElementById(`placeholder-${user.uid}`);
+    if (videoElement) {
+        videoElement.style.display = "none";
+        placeholder.style.display = "flex";
+    }
+});
+
+
+client.on("user-published", async (user, mediaType) => {
+    try {
+        await client.subscribe(user, mediaType);
+
+        if (mediaType === "video") {
+            displayRemoteVideo(user);
+        }
+        
+        if (mediaType === "audio") {
+            user.audioTrack.play();
+        }
+    } catch (error) {
+        console.error("Error subscribing to user:", error);
+    }
+});
 
         function removeRemoteVideo(uid) {
             const videoElement = document.getElementById(`remoteVideo-${uid}`);
@@ -370,6 +734,8 @@ document.getElementById("startCall").addEventListener("click", async () => {
                 console.log(`Removed video element for UID: ${uid}`);
             }
         }
+    
     </script>
 </body>
 </html>
+
