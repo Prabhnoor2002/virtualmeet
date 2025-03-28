@@ -167,6 +167,9 @@ def start_meeting(meeting_id):
     meeting_link = url_for('meeting_room', meeting_id=meeting_id, _external=True)
     flash(f'Meeting started! Share this link: {meeting_link}', 'success')
     return redirect(url_for('meeting_room', meeting_id=meeting_id))
+@app.route('/meeting_room/<meeting_id>')
+def meeting_room(meeting_id):
+    return render_template('meeting_room.html', meeting_id=meeting_id)
 
 
 # -------------------- ADMIN DASHBOARD --------------------
