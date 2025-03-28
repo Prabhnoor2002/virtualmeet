@@ -89,9 +89,11 @@ def user_dashboard():
         return redirect(url_for('login'))
 
 # -------------------- CREATE MEETING --------------------
+# filepath: c:\Users\Dell\OneDrive\Desktop\virtualmeet\app.py
 @app.route('/join_meeting', methods=['POST'])
 def join_meeting():
     meeting_id = request.form.get('meeting_id', '').strip()
+    print(f"Received Meeting ID: {meeting_id}")  # Debugging log
 
     if not meeting_id:
         flash('Meeting ID or link is required.', 'danger')
@@ -102,11 +104,15 @@ def join_meeting():
     try:
         cursor.execute("SELECT * FROM meetings WHERE meeting_id = ?", (meeting_id,))
         meeting = cursor.fetchone()
+        print(f"Query Result: {meeting}")  # Debugging log
 
         if meeting:
             return redirect(url_for('meeting_room', meeting_id=meeting_id))
         else:
             flash('Meeting not found. Please check the Meeting ID or link.', 'danger')
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")  # Debugging log
+        flash('An error occurred while accessing the database.', 'danger')
     finally:
         conn.close()
 
