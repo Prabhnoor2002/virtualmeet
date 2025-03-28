@@ -89,7 +89,28 @@ def user_dashboard():
         return redirect(url_for('login'))
 
 # -------------------- CREATE MEETING --------------------
+@app.route('/join_meeting', methods=['POST'])
+def join_meeting():
+    meeting_id = request.form.get('meeting_id', '').strip()
 
+    if not meeting_id:
+        flash('Meeting ID or link is required.', 'danger')
+        return redirect(url_for('user_dashboard'))
+
+    # Check if the meeting exists in the database
+    conn, cursor = get_db_cursor()
+    try:
+        cursor.execute("SELECT * FROM meetings WHERE meeting_id = ?", (meeting_id,))
+        meeting = cursor.fetchone()
+
+        if meeting:
+            return redirect(url_for('meeting_room', meeting_id=meeting_id))
+        else:
+            flash('Meeting not found. Please check the Meeting ID or link.', 'danger')
+    finally:
+        conn.close()
+
+    return redirect(url_for('user_dashboard'))
 @app.route('/create_meeting', methods=['GET', 'POST'])
 @role_required(['admin', 'trainer'])
 def create_meeting():
