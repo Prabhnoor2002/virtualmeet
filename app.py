@@ -162,23 +162,11 @@ def signup():
             conn.close()
 
     return render_template('home.html')
-@app.route('/start_meeting/<string:meeting_id>', methods=['GET', 'POST'])
-@role_required(['admin', 'trainer'])
+@app.route('/start_meeting/<meeting_id>')
 def start_meeting(meeting_id):
-    meeting_id = meeting_id.strip()  # Clean up any extra spaces
-    print(f"DEBUG: Received meeting_id = '{meeting_id}'")
-
-    conn, cursor = get_db_cursor()
-    cursor.execute("SELECT * FROM meetings WHERE id = ?", (str(meeting_id),))
-    meeting = cursor.fetchone()
-    conn.close()
-    
-    if not meeting:
-        flash('Meeting not found', 'danger')
-        return redirect(url_for('admin_dashboard'))
-
-    flash(f"Meeting '{meeting['title']}' has started!", 'success')
-    return redirect(url_for('admin_dashboard'))
+    meeting_link = url_for('meeting_room', meeting_id=meeting_id, _external=True)
+    flash(f'Meeting started! Share this link: {meeting_link}', 'success')
+    return redirect(url_for('meeting_room', meeting_id=meeting_id))
 
 
 # -------------------- ADMIN DASHBOARD --------------------
