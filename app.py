@@ -170,6 +170,7 @@ def create_meeting():
     return render_template('create_meeting.html')
 # filepath: c:\Users\Dell\OneDrive\Desktop\virtualmeet\app.py
 @app.route('/delete_meeting/<meeting_id>', methods=['DELETE'])
+@role_required(['admin','trainer'])
 def delete_meeting(meeting_id):
     if 'role' not in session or session['role'] != 'admin':
         return jsonify({'error': 'Unauthorized'}), 401
