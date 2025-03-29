@@ -32,33 +32,40 @@
             position: relative;
         }
         .video-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 10px;
-            width: 100%;
-            margin-top: 20px;
-        }
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        width: 100%;
+        margin-top: 20px;
+        padding: 10px;
+    }
+
         video {
-            width: 100%;
-            border-radius: 10px;
-            object-fit: cover;
-            border: 2px solid #2563eb;
-        }
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
         .video-container {
-    position: relative;
-}
+        position: relative;
+        background-color: #000;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        aspect-ratio: 16 / 9; /* Maintain a 16:9 aspect ratio */
+    }
+
 
 .name-overlay {
-    position: absolute;
-    bottom: 8px;
-    left: 8px;
-    background-color: rgba(0, 0, 0, 0.7);
-    color: #fff;
-    padding: 4px 8px;
-    border-radius: 8px;
-    font-size: 14px;
-}
-
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: #fff;
+        padding: 4px 8px;
+        border-radius: 8px;
+        font-size: 14px;
+    }
         .controls {
             display: flex;
             justify-content: center;
@@ -93,6 +100,18 @@
   #chatMessages div {
     animation: fadeIn 0.3s ease forwards;
   }
+ .placeholder {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+        background-color: #4b5563; /* Gray background */
+        color: #fff;
+        font-size: 24px;
+        font-weight: bold;
+        border-radius: 10px;
+    }
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(10px); }
@@ -419,7 +438,7 @@ function appendChatMessage(message, side) {
 }
 
         const appId = "bca6ee4b69a94a33af8b1ff43852fa56";
-        const token = "007eJxTYHhocGa34nGzW3aMOh8WLv7Y99Vtyzc+MVb1nW4qXTcXLp6hwJCUnGiWmmqSZGaZaGmSaGycmGaRZJiWZmJsYWqUlmhqVqTwLL0hkJHh1YF9rIwMEAjiszKUpBaXGDIwAADgcSHG";
+        const token = "007eJxTYFiRuUz+ruN1nm2yt5hUrW8Ubb8S4L3het0bzc3vG79eehWswJCUnGiWmmqSZGaZaGmSaGycmGaRZJiWZmJsYWqUlmhqxlv4PL0hkJEh5n44CyMDBIL4rAwlqcUlhgwMABiRIi4=";
         const channel = "test1";
         const uid = Math.floor(Math.random() * 10000);
         let screenTrack = null;
@@ -528,22 +547,38 @@ document.getElementById("endCall").addEventListener("click", async () => {
 
 document.getElementById("toggleCamera").addEventListener("click", async () => {
     try {
-        if (localVideoTrack) {
-            const isEnabled = localVideoTrack.enabled;
-            await localVideoTrack.setEnabled(!isEnabled);
-            document.getElementById("toggleCamera").innerHTML = isEnabled
-                ? '<i class="fas fa-video-slash"></i>'
-                : '<i class="fas fa-video"></i>';
-            console.log(isEnabled ? "Camera turned off." : "Camera turned on.");
-        } else {
-            console.warn("No video track available.");
+        if (!localVideoTrack) {
+            // Recreate the video track if it doesn't exist
+            localVideoTrack = await AgoraRTC.createCameraVideoTrack();
+            console.log("New video track created.");
         }
+
+        const isEnabled = localVideoTrack.enabled;
+
+        if (isEnabled) {
+            // Disable the camera
+            await localVideoTrack.setEnabled(false);
+            await client.unpublish(localVideoTrack); // Unpublish the video track
+            console.log("Camera turned off and unpublished.");
+        } else {
+            // Enable the camera
+            await localVideoTrack.setEnabled(true);
+            await client.publish(localVideoTrack); // Re-publish the video track
+
+            // Attach the video track to the local video element
+            const videoElement = document.getElementById("localVideo");
+            videoElement.srcObject = new MediaStream([localVideoTrack.getMediaStreamTrack()]);
+            console.log("Camera turned on and published.");
+        }
+
+        // Update the button icon
+        document.getElementById("toggleCamera").innerHTML = isEnabled
+            ? '<i class="fas fa-video-slash"></i>'
+            : '<i class="fas fa-video"></i>';
     } catch (error) {
         console.error("Error toggling camera:", error);
     }
 });
-
-
 document.getElementById("toggleMic").addEventListener("click", async () => {
     try {
         if (localAudioTrack) {
@@ -590,59 +625,57 @@ document.getElementById("toggleMic").addEventListener("click", async () => {
     });
 }
 
-function displayRemoteVideo(user) {
-    const videoGrid = document.getElementById("videoGrid");
-    let container = document.getElementById(`user-container-${user.uid}`);
+    function displayRemoteVideo(user) {
+        const videoGrid = document.getElementById("videoGrid");
+        let container = document.getElementById(`user-container-${user.uid}`);
 
-    if (!container) {
-        container = document.createElement("div");
-        container.id = `user-container-${user.uid}`;
-        container.className = "video-container relative w-80 h-60 rounded-lg overflow-hidden bg-gray-800";
-        videoGrid.appendChild(container);
+        if (!container) {
+            container = document.createElement("div");
+            container.id = `user-container-${user.uid}`;
+            container.className = "video-container";
+            videoGrid.appendChild(container);
+        }
+
+        // Video Element
+        let videoElement = document.getElementById(`remoteVideo-${user.uid}`);
+        if (!videoElement) {
+            videoElement = document.createElement("video");
+            videoElement.id = `remoteVideo-${user.uid}`;
+            videoElement.autoplay = true;
+            videoElement.playsinline = true;
+            container.appendChild(videoElement);
+        }
+
+        // Placeholder for when Camera is Off
+        let placeholder = document.getElementById(`placeholder-${user.uid}`);
+        if (!placeholder) {
+            placeholder = document.createElement("div");
+            placeholder.id = `placeholder-${user.uid}`;
+            placeholder.className = "placeholder";
+            placeholder.textContent = getInitials(user.username || `User ${user.uid}`);
+            container.appendChild(placeholder);
+        }
+
+        // Name Overlay
+        let nameOverlay = document.getElementById(`name-overlay-${user.uid}`);
+        if (!nameOverlay) {
+            nameOverlay = document.createElement("div");
+            nameOverlay.id = `name-overlay-${user.uid}`;
+            nameOverlay.className = "name-overlay";
+            nameOverlay.textContent = user.username || `User ${user.uid}`;
+            container.appendChild(nameOverlay);
+        }
+
+        // Show Video or Placeholder
+        if (user.videoTrack) {
+            videoElement.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
+            videoElement.style.display = "block";
+            placeholder.style.display = "none";
+        } else {
+            videoElement.style.display = "none";
+            placeholder.style.display = "flex";
+        }
     }
-
-    // Video Element
-    let videoElement = document.getElementById(`remoteVideo-${user.uid}`);
-    if (!videoElement) {
-        videoElement = document.createElement("video");
-        videoElement.id = `remoteVideo-${user.uid}`;
-        videoElement.autoplay = true;
-        videoElement.playsinline = true;
-        videoElement.className = "w-full h-full";
-        container.appendChild(videoElement);
-    }
-
-    // Placeholder for when Camera is Off
-    let placeholder = document.getElementById(`placeholder-${user.uid}`);
-    if (!placeholder) {
-        placeholder = document.createElement("div");
-        placeholder.id = `placeholder-${user.uid}`;
-        placeholder.className = "flex justify-center items-center w-full h-full text-4xl font-bold bg-gray-400 text-white rounded-lg";
-        placeholder.textContent = getInitials(user.username || `User ${user.uid}`);
-        container.appendChild(placeholder);
-    }
-
-    // Name Overlay
-    let nameOverlay = document.getElementById(`name-overlay-${user.uid}`);
-    if (!nameOverlay) {
-        nameOverlay = document.createElement("div");
-        nameOverlay.id = `name-overlay-${user.uid}`;
-        nameOverlay.className = "absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded-md";
-        nameOverlay.textContent = user.username || `User ${user.uid}`;
-        container.appendChild(nameOverlay);
-    }
-
-    // Show Video or Placeholder
-    if (user.videoTrack) {
-        videoElement.srcObject = new MediaStream([user.videoTrack.getMediaStreamTrack()]);
-        videoElement.style.display = "block";
-        placeholder.style.display = "none";
-    } else {
-        videoElement.style.display = "none";
-        placeholder.style.display = "flex";
-    }
-}
-
 // Event for Camera Off
 client.on("user-unpublished", (user) => {
     console.log(`Remote user ${user.uid} turned off their camera`);
