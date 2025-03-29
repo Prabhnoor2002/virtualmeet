@@ -382,23 +382,28 @@ function setupRemoteUserListeners() {
 
 
   // Sending message with username (optional if you have usernames)
-  sendBtn.addEventListener('click', () => {
-  const message = chatInput.value.trim();
-  if (message) {
-    socket.emit('chat_message', { msg: message, sender: username }); // Include sender
-    appendChatMessage(`You: ${message}`, 'right'); // Show your message
-    chatInput.value = '';
-  }
-});
+ sendBtn.addEventListener('click', () => {
+    const message = chatInput.value.trim();
+    if (message) {
+        // Emit the chat message to the server
+        socket.emit('chat_message', { msg: message, sender: username, room: room });
 
+        // Display the message in the chat box
+        appendChatMessage(`You: ${message}`, 'right');
+
+        // Clear the input field
+        chatInput.value = '';
+    } else {
+        alert("Message cannot be empty.");
+    }
+});
 
 
 socket.on('chat_message', (data) => {
-  if (data.sender === username) return; // Avoid duplicate message
-  appendChatMessage(`${data.sender}: ${data.msg}`, 'left'); // Display actual sender's name
+    if (data.sender !== username) {
+        appendChatMessage(`${data.sender}: ${data.msg}`, 'left');
+    }
 });
-
-
 
 
 chatToggle.addEventListener('click', () => {
@@ -418,25 +423,24 @@ chatToggle.addEventListener('click', () => {
 
 // Auto-Scroll Enhancement on New Message
 function appendChatMessage(message, side) {
-  const msgWrapper = document.createElement('div');
-  msgWrapper.className = `w-full flex ${side === 'right' ? 'justify-end' : 'justify-start'} mb-2`;
+    const msgWrapper = document.createElement('div');
+    msgWrapper.className = `w-full flex ${side === 'right' ? 'justify-end' : 'justify-start'} mb-2`;
 
-  const msgElement = document.createElement('div');
-  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const msgElement = document.createElement('div');
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  msgElement.innerHTML = `
-    <div class="p-3 rounded-2xl max-w-[70%] text-sm shadow
-      ${side === 'right' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-900'}">
-      ${message}
-      <div class="text-xs text-gray-200 ${side === 'right' ? '' : 'text-gray-600'} mt-1 text-right">${time}</div>
-    </div>
-  `;
+    msgElement.innerHTML = `
+        <div class="p-3 rounded-2xl max-w-[70%] text-sm shadow
+            ${side === 'right' ? 'bg-blue-500 text-white' : 'bg-gray-300 text-gray-900'}">
+            ${message}
+            <div class="text-xs text-gray-200 ${side === 'right' ? '' : 'text-gray-600'} mt-1 text-right">${time}</div>
+        </div>
+    `;
 
-  msgWrapper.appendChild(msgElement);
-  chatMessages.appendChild(msgWrapper);
-  chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
+    msgWrapper.appendChild(msgElement);
+    chatMessages.appendChild(msgWrapper);
+    chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
 }
-
         const appId = "bca6ee4b69a94a33af8b1ff43852fa56";
         const token = "007eJxTYFiRuUz+ruN1nm2yt5hUrW8Ubb8S4L3het0bzc3vG79eehWswJCUnGiWmmqSZGaZaGmSaGycmGaRZJiWZmJsYWqUlmhqxlv4PL0hkJEh5n44CyMDBIL4rAwlqcUlhgwMABiRIi4=";
         const channel = "test1";
