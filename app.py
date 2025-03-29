@@ -243,11 +243,16 @@ def meeting_room(meeting_id):
     return render_template('meeting_room.html', meeting_id=meeting_id)
 
 @socketio.on('chat_message')
-def handle_chat(data):
-    print(f"Received message: {data}")
-    # Broadcast to everyone INCLUDING sender
-    emit('chat_message', data, broadcast=True)
+def handle_chat_message(data):
+    room = data.get('room')  # Ensure the room is included in the data
+    message = data.get('msg')
+    sender = data.get('sender')
 
+    if room and message and sender:
+        print(f"Broadcasting message: {message} from {sender} to room {room}")
+        emit('chat_message', {'msg': message, 'sender': sender}, room=room)
+    else:
+        print("Invalid chat message data received.")
 
 participants = {}
 
